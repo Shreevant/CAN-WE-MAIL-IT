@@ -1,0 +1,2356 @@
+﻿===== BindingMenuManager.cs =====
+using System.Collections.Generic;
+using TMPro;
+using UnityEngine;
+using UnityEngine.InputSystem;
+
+public class BindingMenuManager : MonoBehaviour
+{
+    [Header("References")]
+    public TemporaryBindingManager BindingManager;
+    private PlayerInputManager playerInputManager;
+
+        [Header("UI")]
+    public GameObject journalPanel;   // root "Journal" object
+    public GameObject bindingPage;  // child "Bindingmenu"
+    public GameObject mapPage;      // child "map"
+
+    [Header("Sound")]
+    public AudioSource soundSource;
+
+    [Header("Binding Rows")]
+    public List<BindingRowUI> bindingRows =
+        new List<BindingRowUI>();
+
+    private bool menuOpen;
+    private int currentPage = 0; // 0 = Binding, 1 = Map
+
+    private readonly string[] actionNames =
+    {
+        "Move Forward",
+        "Move Left",
+        "Move Backward",
+        "Move Right",
+        "Jump",
+        "Sprint",
+        "Crouch"
+    };
+
+    private void Start()
+    {
+        // Find Binding Manager if it was not assigned.
+        if (BindingManager == null)
+        {
+            BindingManager =
+                FindObjectOfType<TemporaryBindingManager>();
+        }
+
+        // Get Player Input Manager from the same Player.
+        if (BindingManager != null)
+        {
+            playerInputManager =
+                BindingManager.GetComponent<PlayerInputManager>();
+        }
+
+                menuOpen = false;
+
+        if (journalPanel != null)
+            journalPanel.SetActive(false);
+
+        // Make sure both pages start hidden until menu opens
+        if (bindingPage != null) bindingPage.SetActive(false);
+        if (mapPage != null) mapPage.SetActive(false);
+
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+
+        SetupRows();
+        RefreshMenu();
+    }
+
+    private void Update()
+    {
+        if (Keyboard.current == null)
+            return;
+
+        if (Keyboard.current.eKey.wasPressedThisFrame)
+        {
+            ToggleMenu();
+        }
+    }
+
+    private void SetupRows()
+    {
+        int count =
+            Mathf.Min(
+                actionNames.Length,
+                bindingRows.Count
+            );
+
+        for (int i = 0; i < count; i++)
+        {
+            bindingRows[i].Setup(
+                actionNames[i],
+                this
+            );
+        }
+    }
+
+        public void ToggleMenu()
+    {
+        if (soundSource != null && soundSource.clip != null)
+            soundSource.Play();
+        if (menuOpen)
+            CloseMenu();
+        else
+            OpenMenu();
+    }
+
+    private void OpenMenu()
+    {
+        menuOpen = true;
+
+        if (playerInputManager != null)
+        {
+            playerInputManager.SetGameplayInputEnabled(false);
+        }
+
+                journalPanel.SetActive(true);
+        SwitchToPage(currentPage); // keep last page, or force 0 if you prefer
+
+        Time.timeScale = 0f;
+
+        Cursor.lockState =
+            CursorLockMode.None;
+
+        Cursor.visible = true;
+
+        RefreshMenu();
+    }
+
+    private void CloseMenu()
+    {
+        menuOpen = false;
+
+        if (playerInputManager != null)
+        {
+            playerInputManager.SetGameplayInputEnabled(true);
+        }
+
+        journalPanel.SetActive(false);
+
+        Time.timeScale = 1f;
+
+        Cursor.lockState =
+            CursorLockMode.Locked;
+
+        Cursor.visible = false;
+    }
+
+    public void RefreshMenu()
+    {
+        foreach (BindingRowUI row in bindingRows)
+        {
+            if (row != null)
+                row.Refresh();
+        }
+    }
+
+        public void SwitchToPage(int index)
+    {
+        currentPage = Mathf.Clamp(index, 0, 1);
+        if (bindingPage != null) bindingPage.SetActive(currentPage == 0);
+        if (mapPage != null) mapPage.SetActive(currentPage == 1);
+        if (currentPage == 0) RefreshMenu();
+    }
+
+    // Called by UI buttons to flip pages directly
+    public void ShowBindingPage() => SwitchToPage(0);
+    public void ShowMapPage() => SwitchToPage(1);
+
+    // Called by a single "Cycle / Flip" button
+    public void CyclePage()
+    {
+        SwitchToPage(currentPage == 0 ? 1 : 0);
+    }
+
+    private void OnDestroy()
+    {
+    }
+}
+===== BindingRowUI.cs =====
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+
+public class BindingRowUI : MonoBehaviour
+{
+    [Header("UI")]
+    public TMP_Text actionNameText;
+    public TMP_Text originalBindingText;
+    public TMP_Text currentBindingText;
+    private string actionName;
+
+    private BindingMenuManager menuManager;
+
+    public void Setup(
+        string action,
+        BindingMenuManager manager)
+    {
+        actionName = action;
+        menuManager = manager;
+
+        actionNameText.text = actionName;
+
+        Refresh();
+    }
+
+    public void Refresh()
+    {
+        if (menuManager == null)
+            return;
+
+        TemporaryBindingManager bindingManager =
+            menuManager.BindingManager;
+
+        TemporaryBindingManager.BindingData binding =
+            bindingManager.GetBinding(actionName);
+
+        if (binding == null)
+            return;
+
+        originalBindingText.text =
+            FormatKey(binding.originalKey);
+
+        currentBindingText.text =
+            FormatKey(binding.currentKey);
+
+
+    }
+
+    private string FormatKey(
+        UnityEngine.InputSystem.Key key)
+    {
+        switch (key)
+        {
+            case UnityEngine.InputSystem.Key.W:
+                return "W";
+
+            case UnityEngine.InputSystem.Key.A:
+                return "A";
+
+            case UnityEngine.InputSystem.Key.S:
+                return "S";
+
+            case UnityEngine.InputSystem.Key.D:
+                return "D";
+
+            case UnityEngine.InputSystem.Key.Space:
+                return "SPACE";
+
+            case UnityEngine.InputSystem.Key.LeftShift:
+                return "LEFT SHIFT";
+
+            case UnityEngine.InputSystem.Key.C:
+                return "C";
+
+            default:
+                return key.ToString().ToUpper();
+        }
+    }
+}
+===== CutscenePlayer.cs =====
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using UnityEngine.Video;
+
+public class CutscenePlayer : MonoBehaviour
+{
+    public static CutscenePlayer Instance;
+    public GameObject videoPanel;      // Canvas / RawImage overlay (assign in Inspector)
+    public VideoPlayer videoPlayer;
+
+    void Awake() { if (Instance == null) Instance = this; else Destroy(gameObject); }
+
+    public void PlayAndLoadCity()
+    {
+        if (videoPanel != null) videoPanel.SetActive(true);
+        if (videoPlayer == null) videoPlayer = GetComponent<VideoPlayer>();
+        if (videoPlayer != null)
+        {
+            videoPlayer.loopPointReached += OnVideoFinished;
+            videoPlayer.Play();
+        }
+        // Hide menu buttons via listener, or just rely on MenuController disabling them
+    }
+
+    void OnVideoFinished(VideoPlayer vp)
+    {
+        SceneManager.LoadScene("city");
+    }
+
+    void OnDestroy()
+    {
+        if (videoPlayer != null) videoPlayer.loopPointReached -= OnVideoFinished;
+    }
+}
+===== DayManager.cs =====
+using UnityEngine;
+using System;
+
+public class DayManager : MonoBehaviour
+{
+    public static DayManager Instance;
+    [Header("Config")]
+    public float dayDurationSeconds = 600f; // 10 minutes default
+    public float redMailSpeedMultiplier = 2.0f; // faster drain when Red picked
+    private float timer;
+    public bool IsDayActive { get; private set; }
+    public event Action OnDayEnd;
+
+    private void Awake()
+    {
+        if (Instance == null) Instance = this;
+        else Destroy(gameObject);
+    }
+
+    private void Start() { timer = dayDurationSeconds; IsDayActive = true; }
+
+    private void Update()
+    {
+        if (!IsDayActive) return;
+        float mult = (MailManager.Instance != null && MailManager.Instance.ActiveMail != null && MailManager.Instance.ActiveMail.mailType == MailType.Red) ? redMailSpeedMultiplier : 1f;
+        timer -= Time.deltaTime * mult;
+        if (timer <= 0f)
+        {
+            timer = 0f;
+            IsDayActive = false;
+            if (MailManager.Instance != null) MailManager.Instance.CancelActiveMail();
+            OnDayEnd?.Invoke();
+        }
+    }
+
+    public void StartDay() { timer = dayDurationSeconds; IsDayActive = true; }
+    public float GetRemainingSeconds() => timer;
+}
+===== DayNightSwitch.cs =====
+using UnityEngine;
+using UnityEngine.Rendering.PostProcessing;
+
+public class DayNightSwitch : MonoBehaviour
+{
+    public static DayNightSwitch Instance;
+
+    [Header("Skybox Materials")]
+    public Material daySkybox;
+    public Material nightSkybox;
+
+    [Header("Post-Process (Stack v2)")]
+    public PostProcessVolume postVolume;
+    public PostProcessProfile dayProfile;
+    public PostProcessProfile nightProfile;
+
+    private void Awake() { if (Instance == null) Instance = this; else Destroy(gameObject); }
+
+    private void Start()
+    {
+        SwitchToDay();
+        if (DayManager.Instance != null)
+            DayManager.Instance.OnDayEnd += SwitchToNight;
+    }
+
+    void SwitchToNight()
+    {
+        if (nightSkybox != null)
+        {
+            RenderSettings.skybox = nightSkybox;
+            DynamicGI.UpdateEnvironment();
+        }
+
+        if (postVolume != null && nightProfile != null)
+            postVolume.profile = nightProfile;
+    }
+
+    public void SwitchToDay()
+    {
+        if (daySkybox != null)
+        {
+            RenderSettings.skybox = daySkybox;
+            DynamicGI.UpdateEnvironment();
+        }
+        if (postVolume != null && dayProfile != null)
+            postVolume.profile = dayProfile;
+    }
+
+    private void OnDestroy()
+    {
+        if (DayManager.Instance != null)
+            DayManager.Instance.OnDayEnd -= SwitchToNight;
+    }
+}
+===== DaySummaryUI.cs =====
+using UnityEngine;
+using TMPro;
+
+public class DaySummaryUI : MonoBehaviour
+{
+    public static DaySummaryUI Instance;
+    public GameObject panel;
+    public TMP_Text dayText;
+    public TMP_Text revenueText;
+    public TMP_Text lettersText;
+    public TMP_Text loanRemainingText;
+
+    private void Awake() { if (Instance == null) Instance = this; else Destroy(gameObject); }
+
+    private void OnEnable()
+    {
+        if (DayManager.Instance != null)
+            DayManager.Instance.OnDayEnd += ShowSummary;
+    }
+
+    private void OnDisable()
+    {
+        if (DayManager.Instance != null)
+            DayManager.Instance.OnDayEnd -= ShowSummary;
+    }
+
+    public void ShowSummary()
+    {
+        panel.SetActive(true);
+        Time.timeScale = 0f;
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+        // Day completed shown below
+        if (revenueText != null && RevenueManager.Instance != null) revenueText.text = "Revenue: $" + RevenueManager.Instance.TodayRevenue;
+        if (dayText != null) dayText.text = "Day " + (GameLoopManager.Instance != null ? GameLoopManager.Instance.CurrentDay : 1) + " Completed";
+        if (lettersText != null) lettersText.text = "Letters Delivered: " + MailManager.TotalDelivered;
+                if (loanRemainingText != null && RevenueManager.Instance != null) loanRemainingText.text = "Loan Remaining: $" + System.Math.Max(0, RevenueManager.Instance.LoanAmount - RevenueManager.Instance.TotalRevenue);
+    }
+
+    public void ConfirmAndContinue()
+    {
+        int d = (GameLoopManager.Instance != null) ? GameLoopManager.Instance.CurrentDay : 1;
+        int t = (RevenueManager.Instance != null) ? RevenueManager.Instance.TodayRevenue : 0;
+        int tot = (RevenueManager.Instance != null) ? RevenueManager.Instance.TotalRevenue : 0;
+        SaveData.SaveDay(d, t, tot);
+        CloseSummary();
+                if (GameLoopManager.Instance != null && GameLoopManager.Instance.CurrentDay >= 3)
+                {
+                    int total = (RevenueManager.Instance != null) ? RevenueManager.Instance.TotalRevenue : 0;
+                    int loan = (RevenueManager.Instance != null) ? RevenueManager.Instance.LoanAmount : 50;
+                    bool win = total > loan;
+                    EndVideoPlayer.Instance?.PlayEndVideo(win);
+                }
+                else if (GameLoopManager.Instance != null)
+        {
+            GameLoopManager.Instance.EndDay();
+            DayNightSwitch.Instance?.SwitchToDay();
+        }
+        // Hide house until next timer ends
+        HouseTrigger ht = FindObjectOfType<HouseTrigger>();
+        if (ht != null) ht.SetActive(false);
+    }
+
+    public void CloseSummary()
+    {
+        panel.SetActive(false);
+        Time.timeScale = 1f;
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+    }
+}
+===== DeliveryManager.cs =====
+using UnityEngine;
+using System;
+
+public class DeliveryManager : MonoBehaviour
+{
+    public static DeliveryManager Instance;
+    public DeliveryPoint CurrentDestination { get; private set; }
+    [Header("Manual Drop Points")]
+    public DeliveryPoint[] dropPoints;
+    public event Action<string> OnDestinationChanged;
+
+    private void Awake()
+    {
+        if (Instance == null) Instance = this;
+        else Destroy(gameObject);
+    }
+
+    public void SetDestination(DeliveryPoint point)
+    {
+        DeliveryPoint[] all = (dropPoints != null && dropPoints.Length > 0) ? dropPoints : FindObjectsOfType<DeliveryPoint>();
+        foreach (var dp in all)
+        {
+            if (dp != null) dp.gameObject.SetActive(dp == point);
+        }
+        CurrentDestination = point;
+        OnDestinationChanged?.Invoke(point ? "DropPoint" : "None");
+#if UNITY_EDITOR
+        Debug.Log("[Delivery] Destination set: " + (point ? "DropPoint" : "None"));
+#endif
+    }
+
+    public void SetRandomDestination()
+    {
+        DeliveryPoint[] pool = (dropPoints != null && dropPoints.Length > 0) ? dropPoints : FindObjectsOfType<DeliveryPoint>();
+        if (pool.Length > 0)
+            SetDestination(pool[UnityEngine.Random.Range(0, pool.Length)]);
+    }
+
+    public bool IsAtDestination(Vector3 playerPos)
+    {
+        return CurrentDestination != null && CurrentDestination.IsAtPoint(playerPos);
+    }
+}
+===== DeliveryPoint.cs =====
+using UnityEngine;
+
+public class DeliveryPoint : MonoBehaviour
+{
+    public Transform dropZone;
+    public bool playerInside = false;
+
+    private void Awake() { gameObject.SetActive(false); }
+
+    public bool IsAtPoint(Vector3 playerPos)
+    {
+        if (dropZone == null) dropZone = transform;
+        return Vector3.Distance(playerPos, dropZone.position) < 3f;
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if (other.CompareTag("Player")) playerInside = true;
+    }
+
+    private void OnTriggerExit(Collider other)
+    {
+        if (other.CompareTag("Player")) playerInside = false;
+    }
+}
+===== EndGameUI.cs =====
+using UnityEngine;
+using TMPro;
+
+public class EndGameUI : MonoBehaviour
+{
+    public static EndGameUI Instance;
+    public GameObject panel;
+    public TMP_Text resultText;
+    public TMP_Text totalText;
+    public TMP_Text loanText;
+
+    [Header("Scene")]
+    public string menuSceneName = "menu";
+
+    public void RestartGame()
+    {
+        Time.timeScale = 1f;
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+        if (panel != null) panel.SetActive(false);
+        if (GameLoopManager.Instance != null) GameLoopManager.Instance.Restart();
+        UnityEngine.SceneManagement.SceneManager.LoadScene("city");
+    }
+
+    public void GoToMenu()
+    {
+        Time.timeScale = 1f;
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+        UnityEngine.SceneManagement.SceneManager.LoadScene("menu");
+    }
+
+    private void Awake() 
+    { 
+        if (Instance == null) Instance = this; 
+        else Destroy(gameObject); 
+        if (panel != null) panel.SetActive(false);
+    }
+
+    public void ShowEndScreen()
+    {
+        if (panel != null) panel.SetActive(true);
+        Time.timeScale = 0f;
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+
+        int total = (RevenueManager.Instance != null) ? RevenueManager.Instance.TotalRevenue : 0;
+        int loan = (RevenueManager.Instance != null) ? RevenueManager.Instance.LoanAmount : 50;
+
+        if (totalText != null) totalText.text = "Total Revenue: $" + total;
+        if (loanText != null) loanText.text = "Loan Needed: $" + loan;
+        if (resultText != null)
+            resultText.text = (total > loan) ? "GAME COMPLETE / WIN" : "FAILED / RESTART REQUIRED";
+    }
+}
+===== EndVideoPlayer.cs =====
+using UnityEngine;
+using UnityEngine.Video;
+using UnityEngine.UI;
+
+public class EndVideoPlayer : MonoBehaviour
+{
+    public static EndVideoPlayer Instance;
+    public GameObject videoPanel;
+    public VideoPlayer videoPlayer;
+    public VideoClip winClip;
+    public VideoClip loseClip;
+
+    private bool isPlayingEnd = false;
+
+    void Awake()
+    {
+        if (Instance == null) Instance = this;
+        else Destroy(gameObject);
+    }
+
+    void Start()
+    {
+        if (videoPanel != null) videoPanel.SetActive(false);
+        if (videoPlayer == null) videoPlayer = GetComponent<VideoPlayer>();
+        if (videoPlayer != null)
+        {
+            videoPlayer.loopPointReached += OnVideoFinished;
+        }
+    }
+
+    public void PlayEndVideo(bool win)
+    {
+        isPlayingEnd = true;
+        if (videoPanel != null) videoPanel.SetActive(true);
+        if (videoPlayer != null)
+        {
+            videoPlayer.clip = win ? winClip : loseClip;
+#if UNITY_EDITOR
+            Debug.Log("[EndVideo] Clip: " + (videoPlayer.clip ? videoPlayer.clip.name : "NULL"));
+#endif
+            videoPlayer.Play();
+#if UNITY_EDITOR
+            Debug.Log("[EndVideo] Playing: " + (win ? "WIN" : "LOSE"));
+#endif
+        }
+    }
+
+    void OnVideoFinished(VideoPlayer vp)
+    {
+#if UNITY_EDITOR
+        Debug.Log("[EndVideo] Finished");
+#endif
+        if (isPlayingEnd)
+        {
+            isPlayingEnd = false;
+            if (videoPanel != null) videoPanel.SetActive(false);
+#if UNITY_EDITOR
+            Debug.Log("[EndVideo] Showing EndGameUI");
+#endif
+            EndGameUI.Instance?.ShowEndScreen();
+        }
+        else
+        {
+#if UNITY_EDITOR
+            Debug.Log("[EndVideo] Not playing end - ignoring");
+#endif
+        }
+    }
+
+    void Update()
+    {
+        if (isPlayingEnd && videoPlayer != null && videoPlayer.isPlaying == false && videoPlayer.time > 0)
+        {
+            OnVideoFinished(videoPlayer);
+        }
+    }
+
+    void OnDestroy()
+    {
+        if (videoPlayer != null) videoPlayer.loopPointReached -= OnVideoFinished;
+    }
+}
+===== GameLoopManager.cs =====
+using UnityEngine;
+using System;
+
+public class GameLoopManager : MonoBehaviour
+{
+    public static GameLoopManager Instance;
+    public int CurrentDay = 1;
+    public int TotalDays = 3;
+    public bool HasWon { get; set; }
+
+    private void Awake() { if (Instance == null) Instance = this; else Destroy(gameObject); }
+
+    public void EndDay()
+    {
+        if (DayManager.Instance != null)
+            RevenueManager.Instance?.ResetDayRevenue();
+        CurrentDay++;
+        if (CurrentDay > TotalDays)
+        {
+            HasWon = RevenueManager.Instance != null && RevenueManager.Instance.HasPaidLoan();
+#if UNITY_EDITOR
+            Debug.Log("[Loop] Day 3 ended. Won=" + HasWon);
+#endif
+        }
+        else
+        {
+            if (DayManager.Instance != null) DayManager.Instance.StartDay();
+            SaveData.SaveDay(CurrentDay, RevenueManager.Instance != null ? RevenueManager.Instance.TodayRevenue : 0, RevenueManager.Instance != null ? RevenueManager.Instance.TotalRevenue : 0);
+        }
+    }
+
+    public void Restart()
+    {
+        CurrentDay = 1; HasWon = false;
+        if (DayManager.Instance != null) DayManager.Instance.StartDay();
+        if (RevenueManager.Instance != null) RevenueManager.Instance.ResetDayRevenue();
+        if (MailManager.Instance != null) MailManager.Instance.ResetTodayDelivered();
+        if (MailManager.Instance != null) MailManager.Instance.ActiveMail = null;
+        if (MailManager.Instance != null) MailManager.Instance.ResetTodayDelivered();
+    }
+}
+===== HouseTrigger.cs =====
+using UnityEngine;
+
+public class HouseTrigger : MonoBehaviour
+{
+    [Header("Visual & Trigger")]
+    public MeshRenderer meshRenderer;
+    public Collider triggerCollider;
+
+    private void Start()
+    {
+        SetActive(false);
+        if (DayManager.Instance != null)
+            DayManager.Instance.OnDayEnd += () => SetActive(true);
+    }
+
+    public void SetActive(bool active)
+    {
+        if (meshRenderer != null) meshRenderer.enabled = active;
+        if (triggerCollider != null) triggerCollider.enabled = active;
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if (other.CompareTag("Player") && DaySummaryUI.Instance != null)
+            DaySummaryUI.Instance.ShowSummary();
+    }
+}
+===== HUDController.cs =====
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+
+public class HUDController : MonoBehaviour
+{
+    [Header("UI References")]
+    [Header("Mail Sprite References")]
+    public UnityEngine.UI.Image mailIcon;
+    public Sprite blueMailSprite;
+    public Sprite redMailSprite;
+    public Sprite yellowMailSprite;
+    public Sprite noMailSprite;
+    public TMP_Text dayText;
+    public TMP_Text timeText;
+    public TMP_Text deliveredText;
+    [Header("Stamina")]
+        public Slider staminaSlider;
+
+    private float dayStartTime = 8f; // 8:00
+    private float dayEndTime = 17f;  // 17:00 (5 PM)
+    private float duration = 600f;
+
+    private void Update()
+    {
+        UpdateMailStatus();
+        UpdateDay();
+        UpdateTime();
+    }
+
+    void UpdateMailStatus()
+    {
+        if (mailIcon == null) return;
+        if (MailManager.Instance != null && MailManager.Instance.ActiveMail != null)
+        {
+            mailIcon.enabled = true;
+            switch (MailManager.Instance.ActiveMail.mailType)
+            {
+                case MailType.Blue: mailIcon.sprite = blueMailSprite; break;
+                case MailType.Red: mailIcon.sprite = redMailSprite; break;
+                case MailType.Yellow: mailIcon.sprite = yellowMailSprite; break;
+                default: mailIcon.sprite = noMailSprite; break;
+            }
+        }
+        else
+        {
+            mailIcon.enabled = true;
+            mailIcon.sprite = noMailSprite;
+        }
+    }
+
+    Color GetMailColor(MailType type)
+    {
+        switch (type)
+        {
+            case MailType.Blue: return Color.blue;
+            case MailType.Red: return Color.red;
+            case MailType.Yellow: return Color.yellow;
+            default: return Color.white;
+        }
+    }
+
+        void UpdateDay()
+    {
+        if (dayText == null) return;
+        bool dayOver = (DayManager.Instance != null && !DayManager.Instance.IsDayActive);
+        if (dayOver)
+            dayText.text = "Day Over";
+        else if (GameLoopManager.Instance != null)
+            dayText.text = "Day " + GameLoopManager.Instance.CurrentDay;
+        else
+            dayText.text = "Day 1";
+    }
+
+        void UpdateTime()
+    {
+        if (timeText == null) return;
+        float timer = (DayManager.Instance != null) ? DayManager.Instance.GetRemainingSeconds() : 600f;
+        float duration = (DayManager.Instance != null) ? DayManager.Instance.dayDurationSeconds : 600f;
+        if (duration <= 0f) duration = 600f;
+        float progress = Mathf.Clamp01(1f - timer / duration);
+        float hourFloat = dayStartTime + progress * (dayEndTime - dayStartTime);
+        int hour = Mathf.FloorToInt(hourFloat) % 24;
+        int minute = Mathf.FloorToInt((hourFloat - Mathf.Floor(hourFloat)) * 60f);
+        timeText.text = string.Format("{0:D2}:{1:D2}", hour, minute);       
+                bool redActive = (MailManager.Instance != null && MailManager.Instance.ActiveMail != null && MailManager.Instance.ActiveMail.mailType == MailType.Red);
+        timeText.color = redActive ? Color.red : Color.white;
+
+        if (deliveredText != null && MailManager.Instance != null)
+            deliveredText.text = "Delivered: " + MailManager.TodayDelivered;
+
+        if (PlayerStamina.Instance != null)
+        {
+                        if (staminaSlider != null) staminaSlider.value = PlayerStamina.Instance.current / PlayerStamina.Instance.max;
+        }
+    }
+}
+
+
+
+
+===== LoadSaveOnStart.cs =====
+using UnityEngine;
+
+public class LoadSaveOnStart : MonoBehaviour
+{
+    void Start()
+    {
+        if (Application.isEditor) return; // don't load saved data in Unity Editor
+        int day = 1, todayRev = 0, totalRev = 0;
+        SaveData.LoadDay(out day, out todayRev, out totalRev);
+
+        if (GameLoopManager.Instance != null)
+        {
+            GameLoopManager.Instance.CurrentDay = day;
+            GameLoopManager.Instance.HasWon = false;
+        }
+
+        if (RevenueManager.Instance != null)
+        {
+            RevenueManager.Instance.TotalRevenue = totalRev;
+            RevenueManager.Instance.TodayRevenue = todayRev;
+            RevenueManager.Instance.TriggerRevenueUpdated();
+        }
+
+        if (DayManager.Instance != null)
+        {
+            DayManager.Instance.StartDay();
+        }
+
+        if (MailManager.Instance != null)
+        {
+            MailManager.Instance.ActiveMail = null;
+        }
+    }
+}
+
+===== MailManager.cs =====
+using UnityEngine;
+using System;
+
+public class MailManager : MonoBehaviour
+{
+    public static MailManager Instance;
+    public MailPickup ActiveMail { get; set; }
+    public event Action<MailPickup> OnMailDelivered;
+    public static int TotalDelivered = 0;
+    public static int TodayDelivered = 0;
+
+        [Header("Yellow Mail Tuning")]
+    [SerializeField] private float yellowChangeInterval = 120f;
+
+        [Header("Mail Fixed Values")]
+    public int blueValue = 12;
+    public int redValue = 8;
+    public int yellowValue = 15;
+
+    private void Awake()
+    {
+        if (Instance == null) Instance = this;
+        else Destroy(gameObject);
+    }
+
+        public void CancelActiveMail()
+    {
+        if (ActiveMail == null) return;
+#if UNITY_EDITOR
+        Debug.Log("[Mail] Cancelled due to day end");
+#endif
+        ActiveMail.isPickedUp = false;
+
+        TemporaryBindingManager binder = FindObjectOfType<TemporaryBindingManager>();
+        if (binder != null) binder.ResetToDefaults();
+
+        ActiveMail = null;
+        if (DeliveryManager.Instance != null) DeliveryManager.Instance.SetDestination(null);
+    }
+
+    public void ResetTodayDelivered() => TodayDelivered = 0;
+
+    public bool HasActiveMail() => ActiveMail != null && ActiveMail.isPickedUp;
+
+    public void DeliverActiveMail()
+    {
+        if (ActiveMail == null) return;
+#if UNITY_EDITOR
+        Debug.Log("[Mail] Delivered: " + ActiveMail.mailType + " Value=" + ActiveMail.hiddenValue);
+#endif
+        OnMailDelivered?.Invoke(ActiveMail);
+        if (ActiveMail.mailType == MailType.Blue)
+        {
+            TemporaryBindingManager binder = FindObjectOfType<TemporaryBindingManager>();
+            if (binder != null) binder.ResetToDefaults();
+        }
+        if (RevenueManager.Instance != null && ActiveMail.hiddenValue > 0)
+            RevenueManager.Instance.AddRevenue(ActiveMail.hiddenValue);
+
+        ActiveMail.isPickedUp = false;
+        TotalDelivered++;
+        TodayDelivered++;
+        ActiveMail = null;
+
+        if (DeliveryManager.Instance != null)
+            DeliveryManager.Instance.SetDestination(null);
+    }
+
+    public void SelectMail(MailType type)
+    {
+        ActiveMail = new MailPickup();
+        ActiveMail.mailType = type;
+        ActiveMail.isPickedUp = true;
+        ActiveMail.hiddenValue = RandomHiddenValue(type);
+        ActiveMail.deliveryPointName = "Random";
+#if UNITY_EDITOR
+        Debug.Log("[Mail] Selected: " + type + " Value=" + ActiveMail.hiddenValue);
+#endif
+        if (DeliveryManager.Instance != null)
+            DeliveryManager.Instance.SetRandomDestination();
+        if (type == MailType.Blue)
+        {
+            TemporaryBindingManager binder = FindObjectOfType<TemporaryBindingManager>();
+            if (binder != null) binder.StartRandomTimer();
+        }
+        if (type == MailType.Yellow)
+            StartCoroutine(YellowDestinationLoop());
+    }
+
+        private int RandomHiddenValue(MailType type)
+        {
+            if (type == MailType.Blue) return blueValue;
+            if (type == MailType.Red) return redValue;
+            return yellowValue;
+        }
+
+    private System.Collections.IEnumerator YellowDestinationLoop()
+    {
+        while (ActiveMail != null && ActiveMail.mailType == MailType.Yellow)
+        {
+            yield return new WaitForSeconds(yellowChangeInterval);
+            if (ActiveMail != null && ActiveMail.mailType == MailType.Yellow && DeliveryManager.Instance != null)
+                DeliveryManager.Instance.SetRandomDestination();
+        }
+    }
+}
+===== MailPickup.cs =====
+using UnityEngine;
+
+public class MailPickup
+{
+    [Header("Mail Identity")]
+    public MailType mailType = MailType.Blue;
+    public int hiddenValue = 0; // revealed only on delivery
+    public string deliveryPointName = "Post Office";
+
+    [Header("Pickup State")]
+    public bool isPickedUp = false;
+
+    // Called by player / interaction
+    public bool TryPickup()
+    {
+        // Only allow pickup if no mail currently held (enforced by MailManager)
+        if (MailManager.Instance != null && MailManager.Instance.HasActiveMail())
+            return false;
+
+        isPickedUp = true;
+        return true;
+    }
+}
+===== MailType.cs =====
+public enum MailType
+{
+    Blue,   // Randomizes control bindings (timed)
+    Red,    // Speeds up day timer / drain rate
+    Yellow  // Changes delivery destination interval
+}
+===== MapMarker.cs =====
+using UnityEngine;
+
+public class MapMarker : MonoBehaviour
+{
+    [Header("UI")]
+    public RectTransform mapRect;
+    public RectTransform markerRect;
+
+    [Header("Orthographic Map Camera")]
+    public Camera orthoMapCamera;
+
+    [Header("Post Office Fallback")]
+    public Transform postOfficeTarget;
+
+    [Header("Home / End of Day")]
+    public Transform homeTarget;
+
+    private void Update()
+    {
+        Vector3 vp; float localX, localY;
+        bool dayFinished = (DayManager.Instance != null && !DayManager.Instance.IsDayActive);
+
+        if (dayFinished)
+        {
+            if (homeTarget == null)
+            {
+                HouseTrigger ht = FindObjectOfType<HouseTrigger>();
+                if (ht != null) homeTarget = ht.transform;
+            }
+            Transform target = homeTarget != null ? homeTarget : postOfficeTarget;
+
+            if (target == null || markerRect == null || mapRect == null || orthoMapCamera == null)
+            {
+                if (markerRect != null) markerRect.gameObject.SetActive(false);
+                return;
+            }
+
+            markerRect.gameObject.SetActive(true);
+            vp = orthoMapCamera.WorldToViewportPoint(target.position);
+            localX = Mathf.Lerp(mapRect.rect.xMin, mapRect.rect.xMax, vp.x);
+            localY = Mathf.Lerp(mapRect.rect.yMin, mapRect.rect.yMax, vp.y);
+            markerRect.anchoredPosition = new Vector2(localX, localY);
+            return;
+        }
+
+        DeliveryPoint dest = (DeliveryManager.Instance != null) ? DeliveryManager.Instance.CurrentDestination : null;
+        Transform targetNormal = (dest != null) ? dest.transform : postOfficeTarget;
+
+        if (targetNormal == null || markerRect == null || mapRect == null || orthoMapCamera == null)
+        {
+            if (markerRect != null) markerRect.gameObject.SetActive(false);
+            return;
+        }
+
+        markerRect.gameObject.SetActive(true);
+        vp = orthoMapCamera.WorldToViewportPoint(targetNormal.position);
+        localX = Mathf.Lerp(mapRect.rect.xMin, mapRect.rect.xMax, vp.x);
+        localY = Mathf.Lerp(mapRect.rect.yMin, mapRect.rect.yMax, vp.y);
+        markerRect.anchoredPosition = new Vector2(localX, localY);
+    }
+}
+
+
+
+
+===== MenuController.cs =====
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using UnityEngine.UI;
+
+public class MenuController : MonoBehaviour
+{
+    [Header("Buttons")]
+    public Button newGameBtn;
+    public Button continueBtn;
+    public Button creditsBtn;
+    public Button quitBtn;
+
+    [Header("Credits Panel")]
+    public GameObject creditsPanel;
+    public GameObject menuPanel;
+
+    private void Start()
+    {
+        if (newGameBtn != null) newGameBtn.onClick.AddListener(OnNewGame);
+        if (continueBtn != null) continueBtn.onClick.AddListener(OnContinue);
+        if (creditsBtn != null) creditsBtn.onClick.AddListener(OnCredits);
+        if (quitBtn != null) quitBtn.onClick.AddListener(OnQuit);
+
+        if (creditsPanel != null) creditsPanel.SetActive(false);
+    }
+
+    void OnNewGame()
+    {
+        PlayerPrefs.DeleteKey("Day_Current");
+        PlayerPrefs.DeleteKey("Day_TodayRev");
+        PlayerPrefs.DeleteKey("Day_TotalRev");
+        PlayerPrefs.Save();
+        StartCutscene();
+    }
+
+    void OnContinue()
+    {
+        int day = 1, todayRev = 0, totalRev = 0;
+        SaveData.LoadDay(out day, out todayRev, out totalRev);
+        if (day <= 1 && totalRev <= 0 && !PlayerPrefs.HasKey("Day_Current"))
+        {
+            OnNewGame();
+            return;
+        }
+        SceneManager.LoadScene("city");
+    }
+
+    void OnCredits()
+    {
+        if (creditsPanel != null) creditsPanel.SetActive(true);
+        if (menuPanel != null) menuPanel.SetActive(false);
+    }
+
+    public void CloseCredits()
+    {
+        if (creditsPanel != null) creditsPanel.SetActive(false);
+        if (menuPanel != null) menuPanel.SetActive(true);
+    }
+
+    void OnQuit()
+    {
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
+    }
+
+    private void OnDestroy()
+    {
+        if (newGameBtn != null) newGameBtn.onClick.RemoveListener(OnNewGame);
+        if (continueBtn != null) continueBtn.onClick.RemoveListener(OnContinue);
+        if (creditsBtn != null) creditsBtn.onClick.RemoveListener(OnCredits);
+        if (quitBtn != null) quitBtn.onClick.RemoveListener(OnQuit);
+    }
+
+    void StartCutscene()
+    {
+        if (newGameBtn != null) newGameBtn.interactable = false;
+        if (continueBtn != null) continueBtn.interactable = false;
+        CutscenePlayer.Instance?.PlayAndLoadCity();
+    }
+}
+===== MouseRevealController.cs =====
+using UnityEngine;
+using UnityEngine.UI;
+using UnityEngine.InputSystem;
+
+public class MouseRevealController : MonoBehaviour
+{
+    [Header("References")]
+    public Image colorImage;
+
+    [Header("Reveal Settings")]
+    [Range(0.01f, 0.5f)]
+    public float revealRadius = 0.15f;
+
+    [Range(0f, 0.2f)]
+    public float revealSoftness = 0.03f;
+
+    private Material revealMaterial;
+
+    private void Start()
+    {
+        if (colorImage == null)
+        {
+            colorImage = GetComponent<Image>();
+        }
+
+        revealMaterial = colorImage.material;
+
+        if (revealMaterial == null)
+        {
+            Debug.LogError(
+                "[MouseReveal] No material found on Color Image."
+            );
+
+            return;
+        }
+
+        UpdateRevealSettings();
+    }
+
+    private void Update()
+    {
+        if (revealMaterial == null)
+            return;
+
+        if (Mouse.current == null)
+            return;
+
+        // New Input System
+        Vector2 mousePosition =
+            Mouse.current.position.ReadValue();
+
+        float x =
+            mousePosition.x / Screen.width;
+
+        float y =
+            mousePosition.y / Screen.height;
+
+        revealMaterial.SetVector(
+            "_MousePosition",
+            new Vector4(x, y, 0f, 0f)
+        );
+
+        revealMaterial.SetFloat(
+            "_Radius",
+            revealRadius
+        );
+
+        revealMaterial.SetFloat(
+            "_Softness",
+            revealSoftness
+        );
+    }
+
+    private void UpdateRevealSettings()
+    {
+        if (revealMaterial == null)
+            return;
+
+        revealMaterial.SetFloat(
+            "_Radius",
+            revealRadius
+        );
+
+        revealMaterial.SetFloat(
+            "_Softness",
+            revealSoftness
+        );
+    }
+}
+===== PauseMenu.cs =====
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using UnityEngine.UI;
+
+public class PauseMenu : MonoBehaviour
+{
+    public static PauseMenu Instance;
+    public GameObject pausePanel;
+    public Button menuBtn;
+    public Button resumeBtn;
+    public Button restartBtn;
+
+    private bool isPaused = false;
+
+    void Awake() { if (Instance == null) Instance = this; else Destroy(gameObject); }
+
+    void Start()
+    {
+        if (pausePanel != null) pausePanel.SetActive(false);
+        if (menuBtn != null) menuBtn.onClick.AddListener(BackToMenu);
+        if (resumeBtn != null) resumeBtn.onClick.AddListener(Resume);
+        if (restartBtn != null) restartBtn.onClick.AddListener(Restart);
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+    }
+
+        void Update()
+    {
+        if (UnityEngine.InputSystem.Keyboard.current != null && UnityEngine.InputSystem.Keyboard.current.escapeKey.wasPressedThisFrame)
+        {
+            if (AnyOtherPanelActive()) return;
+            TogglePause();
+        }
+    }
+
+        bool AnyOtherPanelActive()
+    {
+        if (DaySummaryUI.Instance != null && DaySummaryUI.Instance.panel != null && DaySummaryUI.Instance.panel.activeSelf) return true;
+        if (EndGameUI.Instance != null && EndGameUI.Instance.panel != null && EndGameUI.Instance.panel.activeSelf) return true;
+        if (EndVideoPlayer.Instance != null && EndVideoPlayer.Instance.videoPanel != null && EndVideoPlayer.Instance.videoPanel.activeSelf) return true;
+        if (PickMailUI.Instance != null && PickMailUI.Instance.panel != null && PickMailUI.Instance.panel.activeSelf) return true;
+        return false;
+    }
+
+    public void TogglePause()
+    {
+        isPaused = !isPaused;
+        if (pausePanel != null) pausePanel.SetActive(isPaused);
+        Time.timeScale = isPaused ? 0f : 1f;
+        if (isPaused) { Cursor.lockState = CursorLockMode.None; Cursor.visible = true; }
+        else { Cursor.lockState = CursorLockMode.Locked; Cursor.visible = false; }
+    }
+
+    void BackToMenu()
+    {
+        Time.timeScale = 1f;
+        SceneManager.LoadScene("menu");
+    }
+
+    void Resume()
+    {
+        TogglePause();
+    }
+
+    void Restart()
+    {
+        Time.timeScale = 1f;
+        if (GameLoopManager.Instance != null) GameLoopManager.Instance.Restart();
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+    }
+
+    void OnDestroy()
+    {
+        if (menuBtn != null) menuBtn.onClick.RemoveListener(BackToMenu);
+        if (resumeBtn != null) resumeBtn.onClick.RemoveListener(Resume);
+        if (restartBtn != null) restartBtn.onClick.RemoveListener(Restart);
+    }
+}
+===== PickMailUI.cs =====
+using UnityEngine;
+using UnityEngine.UI;
+
+public class PickMailUI : MonoBehaviour
+{
+    public static PickMailUI Instance;
+    public GameObject panel;
+
+    public void OpenSelection()
+    {
+        panel.SetActive(true);
+        Time.timeScale = 0f;
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+        if (playerInputManager != null)
+            playerInputManager.SetGameplayInputEnabled(false);
+    }
+
+    public void CloseSelection()
+    {
+        panel.SetActive(false);
+        Time.timeScale = 1f;
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+        if (playerInputManager != null)
+            playerInputManager.SetGameplayInputEnabled(true);
+    }
+
+    private PlayerInputManager playerInputManager;
+
+    private void Awake()
+    {
+        if (Instance == null) Instance = this;
+        else Destroy(gameObject);
+    }
+
+    private void Start()
+    {
+        if (panel != null) panel.SetActive(false);
+        // Optional: find player input manager if not assigned
+        var pm = FindObjectOfType<PlayerInputManager>();
+        if (pm != null) playerInputManager = pm;
+    }
+
+    public void PickBlue() => SelectMailType(MailType.Blue);
+    public void PickRed() => SelectMailType(MailType.Red);
+    public void PickYellow() => SelectMailType(MailType.Yellow);
+
+    private void SelectMailType(MailType type)
+    {
+        if (MailManager.Instance != null)
+            MailManager.Instance.SelectMail(type);
+        CloseSelection();
+    }
+}
+===== PlayerDeliveryInteraction.cs =====
+using UnityEngine;
+
+public class PlayerDeliveryInteraction : MonoBehaviour
+{
+    public Transform playerTransform;
+    private void Awake() { if (playerTransform == null) playerTransform = transform; }
+
+    private void Update()
+    {
+#if UNITY_EDITOR
+        if (MailManager.Instance == null) { Debug.Log("[AutoDel] MailManager is NULL"); return; }
+#endif
+#if UNITY_EDITOR
+        if (MailManager.Instance.ActiveMail == null) { Debug.Log("[AutoDel] ActiveMail is NULL (pick mail first)"); return; }
+#endif
+#if UNITY_EDITOR
+        if (DeliveryManager.Instance == null) { Debug.Log("[AutoDel] DeliveryManager is NULL"); return; }
+#endif
+#if UNITY_EDITOR
+        if (DeliveryManager.Instance.CurrentDestination == null) { Debug.Log("[AutoDel] CurrentDestination is NULL"); return; }
+#endif
+
+        bool inside = DeliveryManager.Instance.CurrentDestination.playerInside;
+#if UNITY_EDITOR
+        Debug.Log("[AutoDel] CurrentPoint=" + DeliveryManager.Instance.CurrentDestination.name + " inside=" + inside);
+#endif
+
+        if (inside)
+        {
+#if UNITY_EDITOR
+            Debug.Log("[AutoDel] DELIVERING at " + DeliveryManager.Instance.CurrentDestination.name);
+#endif
+            MailManager.Instance.DeliverActiveMail();
+        }
+    }
+}
+===== PlayerInputManager.cs =====
+using UnityEngine;
+
+public class PlayerInputManager : MonoBehaviour
+{
+    public PlayerInputActions InputActions { get; private set; }
+
+    public PlayerInputActions.PlayerActions Player =>
+        InputActions.Player;
+
+    public bool GameplayInputEnabled { get; private set; } = true;
+
+    private void Awake()
+    {
+        InputActions = new PlayerInputActions();
+    }
+
+    private void OnEnable()
+    {
+        InputActions.Player.Enable();
+    }
+
+    private void OnDisable()
+    {
+        InputActions.Player.Disable();
+    }
+
+    public void SetGameplayInputEnabled(bool enabled)
+    {
+        GameplayInputEnabled = enabled;
+    }
+
+    private void OnDestroy()
+    {
+        InputActions.Dispose();
+    }
+}
+===== PlayerLook.cs =====
+using UnityEngine;
+
+public class PlayerLook : MonoBehaviour
+{
+    [Header("References")]
+    public Transform cameraHolder;
+
+    [Header("Look")]
+    public float sensitivity = 150f;
+    public float minPitch = -85f;
+    public float maxPitch = 85f;
+
+    [Header("Crouch Camera")]
+    public float crouchCameraOffset = 0.5f;
+    public float cameraCrouchSpeed = 10f;
+
+    private PlayerInputManager inputManager;
+    private PlayerMovement playerMovement;
+
+    private float pitch;
+
+    private Vector3 standingCameraPosition;
+
+    private void Awake()
+    {
+        inputManager = GetComponent<PlayerInputManager>();
+        playerMovement = GetComponent<PlayerMovement>();
+
+        standingCameraPosition = cameraHolder.localPosition;
+    }
+
+    private void OnEnable()
+    {
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+    }
+
+    private void Update()
+    {
+        if (!inputManager.GameplayInputEnabled)
+            return;
+        HandleLook();
+        HandleCrouchCamera();
+    }
+
+    private void HandleLook()
+    {
+        Vector2 lookInput =
+            inputManager.Player.Look.ReadValue<Vector2>();
+
+        float mouseX =
+            lookInput.x * sensitivity * Time.deltaTime;
+
+        float mouseY =
+            lookInput.y * sensitivity * Time.deltaTime;
+
+        transform.Rotate(Vector3.up * mouseX);
+
+        pitch -= mouseY;
+
+        pitch = Mathf.Clamp(
+            pitch,
+            minPitch,
+            maxPitch
+        );
+
+        cameraHolder.localRotation =
+            Quaternion.Euler(pitch, 0f, 0f);
+    }
+
+    private void HandleCrouchCamera()
+    {
+        Vector3 targetPosition =
+            standingCameraPosition;
+
+        if (playerMovement.IsCrouching)
+        {
+            targetPosition.y -= crouchCameraOffset;
+        }
+
+        cameraHolder.localPosition =
+            Vector3.Lerp(
+                cameraHolder.localPosition,
+                targetPosition,
+                cameraCrouchSpeed * Time.deltaTime
+            );
+    }
+}
+===== PlayerMapMarker.cs =====
+using UnityEngine;
+
+public class PlayerMapMarker : MonoBehaviour
+{
+    [Header("UI")]
+    public RectTransform mapRect;
+    public RectTransform markerRect;
+
+    [Header("Orthographic Map Camera")]
+    public Camera orthoMapCamera;
+
+    [Header("Player")]
+    public Transform playerTransform;
+
+    private void Update()
+    {
+        if (playerTransform == null || markerRect == null || mapRect == null || orthoMapCamera == null)
+        {
+            if (markerRect != null) markerRect.gameObject.SetActive(false);
+            return;
+        }
+
+        markerRect.gameObject.SetActive(true);
+        Vector3 vp = orthoMapCamera.WorldToViewportPoint(playerTransform.position);
+        float w = mapRect.rect.width;
+        float h = mapRect.rect.height;
+        float x = (vp.x - 0.5f) * w;
+        float y = (vp.y - 0.5f) * h;
+        markerRect.anchoredPosition = new Vector2(x, y);
+    }
+}
+===== PlayerMovement.cs =====
+using UnityEngine;
+
+public class PlayerMovement : MonoBehaviour
+{
+    [Header("Movement")]
+    public float walkSpeed = 5f;
+    public float sprintSpeed = 8f;
+    public float crouchSpeed = 2.5f;
+
+    [Header("Jump")]
+    public float jumpHeight = 1.2f;
+    public float gravity = -20f;
+
+    [Header("Crouch")]
+    public float crouchHeight = 1f;
+    public float crouchTransitionSpeed = 10f;
+
+    private CharacterController controller;
+    private PlayerInputManager inputManager;
+
+    private Vector2 moveInput;
+
+    private float verticalVelocity;
+
+    private float originalHeight;
+    private Vector3 originalCenter;
+
+    private bool isSprinting;
+    private bool isCrouching;
+
+        public bool IsCrouching => isCrouching;
+    public bool IsSprintingRequested() => isSprinting;
+
+    private void Awake()
+    {
+        controller = GetComponent<CharacterController>();
+        inputManager = GetComponent<PlayerInputManager>();
+
+        originalHeight = controller.height;
+        originalCenter = controller.center;
+    }
+
+    private void Update()
+    {
+        if (!inputManager.GameplayInputEnabled)
+            return;
+        ReadInput();
+        HandleCrouch();
+        HandleMovement();
+    }
+
+    private void ReadInput()
+    {
+        moveInput = inputManager.Player.Move.ReadValue<Vector2>();
+
+                isSprinting = inputManager.Player.Sprint.IsPressed();
+                if (PlayerStamina.Instance != null && PlayerStamina.Instance.current <= 0f)
+            isSprinting = false;
+        isCrouching = inputManager.Player.Crouch.IsPressed();
+    }
+
+    private void HandleMovement()
+    {
+        Vector3 move =
+            transform.right * moveInput.x +
+            transform.forward * moveInput.y;
+
+        float speed;
+
+        if (isCrouching)
+        {
+            speed = crouchSpeed;
+        }
+        else if (isSprinting)
+        {
+            speed = sprintSpeed;
+        }
+        else
+        {
+            speed = walkSpeed;
+        }
+
+        if (controller.isGrounded)
+        {
+            if (verticalVelocity < 0f)
+            {
+                verticalVelocity = -2f;
+            }
+
+            if (inputManager.Player.Jump.WasPressedThisFrame() && !isCrouching)
+            {
+                verticalVelocity =
+                    Mathf.Sqrt(jumpHeight * -2f * gravity);
+            }
+        }
+
+        verticalVelocity += gravity * Time.deltaTime;
+
+        Vector3 velocity = move * speed;
+        velocity.y = verticalVelocity;
+
+        controller.Move(velocity * Time.deltaTime);
+    }
+
+    private void HandleCrouch()
+    {
+        float targetHeight = isCrouching
+            ? crouchHeight
+            : originalHeight;
+
+        controller.height = Mathf.Lerp(
+            controller.height,
+            targetHeight,
+            crouchTransitionSpeed * Time.deltaTime
+        );
+
+        float heightDifference = originalHeight - controller.height;
+
+        controller.center = new Vector3(
+            originalCenter.x,
+            originalCenter.y - heightDifference / 2f,
+            originalCenter.z
+        );
+    }
+}
+===== PlayerStamina.cs =====
+using UnityEngine;
+using UnityEngine.InputSystem;
+
+public class PlayerStamina : MonoBehaviour
+{
+    public static PlayerStamina Instance;
+    public float current = 100f;
+    public float max = 100f;
+    public float drainRate = 20f;
+    public float replenishRate = 15f;
+    private TemporaryBindingManager bindingMgr;
+
+    void Awake() { if (Instance == null) Instance = this; else Destroy(gameObject); bindingMgr = FindObjectOfType<TemporaryBindingManager>(); }
+
+    void Update()
+    {
+        bool holdingSprint = false;
+        if (bindingMgr != null)
+        {
+            UnityEngine.InputSystem.Key sprintKey = bindingMgr.GetCurrentKey("Sprint");
+            if (sprintKey != UnityEngine.InputSystem.Key.None && Keyboard.current != null)
+                holdingSprint = Keyboard.current[sprintKey].isPressed;
+        }
+        else if (Keyboard.current != null)
+        {
+            // Fallback when binding manager is not available
+            holdingSprint = Keyboard.current.leftShiftKey.isPressed || Keyboard.current.rightShiftKey.isPressed;
+        }
+
+        if (holdingSprint)
+        {
+            if (current > 0f)
+                current -= drainRate * Time.deltaTime;
+        }
+        else
+        {
+            current += replenishRate * Time.deltaTime;
+        }
+
+        current = Mathf.Clamp(current, 0f, max);
+    }
+
+    public bool CanSprint() => current > 0f;
+}
+===== PostOfficeTrigger.cs =====
+using UnityEngine;
+
+public class PostOfficeTrigger : MonoBehaviour
+{
+    public PickMailUI pickUI;
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if (other.CompareTag("Player"))
+        {
+            if (MailManager.Instance != null && MailManager.Instance.HasActiveMail()) return;
+            if (DayManager.Instance != null && !DayManager.Instance.IsDayActive) return;
+            if (pickUI != null) pickUI.OpenSelection();
+        }
+    }
+
+    private void OnTriggerExit(Collider other)
+    {
+        if (other.CompareTag("Player"))
+        {
+            if (pickUI != null) pickUI.CloseSelection();
+        }
+    }
+}
+===== RevenueManager.cs =====
+using UnityEngine;
+using System;
+
+public class RevenueManager : MonoBehaviour
+{
+    public static RevenueManager Instance;
+        public int TodayRevenue { get; set; }
+    public int TotalRevenue { get; set; }
+    public int LoanAmount = 50;
+    public event Action OnRevenueUpdated;
+
+    private void Awake() { if (Instance == null) Instance = this; else Destroy(gameObject); }
+
+    public void AddRevenue(int amount)
+    {
+        TodayRevenue += amount;
+        TotalRevenue += amount;
+        OnRevenueUpdated?.Invoke();
+    }
+
+    public void TriggerRevenueUpdated() => OnRevenueUpdated?.Invoke();
+
+    public bool HasPaidLoan() => TotalRevenue >= LoanAmount;
+
+    public void ResetDayRevenue() { TodayRevenue = 0; OnRevenueUpdated?.Invoke(); }
+}
+===== SaturationCycler.cs =====
+using UnityEngine;
+using UnityEngine.Rendering.PostProcessing;
+using System.Collections;
+
+public class SaturationCycler : MonoBehaviour
+{
+    [Header("Profiles")]
+    public PostProcessProfile dayProfile;
+    public PostProcessProfile nightProfile;
+
+    [Header("Day Saturation")]
+    public float dayMin = -100f;
+    public float dayMax = 75f;
+
+    [Header("Night Saturation")]
+    public float nightMin = -100f;
+    public float nightMax = 15f;
+
+    [Header("Timing")]
+    public float transitionDur = 2f;
+    public float holdAtMin = 3f; // B&W hold
+    public float holdAtMax = 3f; // Color hold
+
+    private void Start()
+    {
+        if (dayProfile != null)
+        {
+            SetSat(dayProfile, dayMax);
+            StartCoroutine(CycleProfile(dayProfile, dayMin, dayMax));
+        }
+        if (nightProfile != null)
+        {
+            SetSat(nightProfile, nightMax);
+            StartCoroutine(CycleProfile(nightProfile, nightMin, nightMax));
+        }
+    }
+
+    private void SetSat(PostProcessProfile profile, float value)
+    {
+        ColorGrading grading = profile.GetSetting<ColorGrading>();
+        if (grading != null) grading.saturation.value = value;
+    }
+
+    private IEnumerator CycleProfile(PostProcessProfile profile, float minSat, float maxSat)
+    {
+        while (true)
+        {
+            yield return new WaitForSeconds(holdAtMax);   // start colored, hold
+            yield return Animate(profile, maxSat, minSat, transitionDur); // to B&W
+            yield return new WaitForSeconds(holdAtMin);   // hold B&W
+            yield return Animate(profile, minSat, maxSat, transitionDur); // back to color
+        }
+    }
+
+    private IEnumerator Animate(PostProcessProfile profile, float from, float to, float duration)
+    {
+        ColorGrading grading = profile.GetSetting<ColorGrading>();
+        if (grading == null) yield break;
+        float timer = 0f;
+        while (timer < duration)
+        {
+            timer += Time.deltaTime;
+            float t = timer / duration;
+            grading.saturation.value = Mathf.Lerp(from, to, t);
+            yield return null;
+        }
+        grading.saturation.value = to;
+    }
+}
+===== SaveData.cs =====
+using UnityEngine;
+public class SaveData : MonoBehaviour
+{
+    public static void SaveDay(int currentDay, int todayRevenue, int totalRevenue)
+    {
+        if (Application.isEditor) return;
+        PlayerPrefs.SetInt("Day_Current", currentDay);
+        PlayerPrefs.SetInt("Day_TodayRev", todayRevenue);
+        PlayerPrefs.SetInt("Day_TotalRev", totalRevenue);
+        PlayerPrefs.Save();
+    }
+    public static void LoadDay(out int currentDay, out int todayRevenue, out int totalRevenue)
+    {
+        currentDay = PlayerPrefs.GetInt("Day_Current", 1);
+        todayRevenue = PlayerPrefs.GetInt("Day_TodayRev", 0);
+        totalRevenue = PlayerPrefs.GetInt("Day_TotalRev", 0);
+    }
+}
+===== TemporaryBindingManager.cs =====
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.InputSystem;
+
+public class TemporaryBindingManager : MonoBehaviour
+{
+    [Serializable]
+    public class BindingData
+    {
+        public string actionName;
+
+        // The original key for this action.
+        public Key originalKey;
+
+        // The key currently assigned to this action.
+        public Key currentKey;
+
+        // (binding-lock removed)
+    }
+
+    [Header("Binding Data")]
+    [SerializeField]
+    private List<BindingData> bindings = new List<BindingData>();
+
+        private PlayerInputManager inputManager;
+        private System.Collections.IEnumerator timerCoroutine;
+
+        [Header("Timer Tuning")]
+        [SerializeField] private float shuffleInterval = 30f;
+
+    // The ONLY keys allowed in the game.
+    private readonly Key[] allowedKeys =
+    {
+        Key.W,
+        Key.A,
+        Key.S,
+        Key.D,
+        Key.Space,
+        Key.LeftShift,
+        Key.C
+    };
+
+    private void Awake()
+    {
+        inputManager = GetComponent<PlayerInputManager>();
+
+        CreateDefaultBindings();
+    }
+
+    private void Update()
+    {
+        // TEMPORARY TEST CONTROL
+        // T randomizes the current bindings.
+        //
+        // There is intentionally NO timer yet.
+
+        if (Keyboard.current != null && Keyboard.current.tKey.wasPressedThisFrame)
+        {
+            RandomizeBindings();
+        }
+
+    }
+
+    // =========================================================
+    // DEFAULT BINDINGS
+    // =========================================================
+
+    private void CreateDefaultBindings()
+    {
+        bindings.Clear();
+
+        bindings.Add(new BindingData
+        {
+            actionName = "Move Forward",
+            originalKey = Key.W,
+            currentKey = Key.W,
+        });
+
+        bindings.Add(new BindingData
+        {
+            actionName = "Move Left",
+            originalKey = Key.A,
+            currentKey = Key.A,
+        });
+
+        bindings.Add(new BindingData
+        {
+            actionName = "Move Backward",
+            originalKey = Key.S,
+            currentKey = Key.S,
+        });
+
+        bindings.Add(new BindingData
+        {
+            actionName = "Move Right",
+            originalKey = Key.D,
+            currentKey = Key.D,
+        });
+
+        bindings.Add(new BindingData
+        {
+            actionName = "Jump",
+            originalKey = Key.Space,
+            currentKey = Key.Space,
+        });
+
+        bindings.Add(new BindingData
+        {
+            actionName = "Sprint",
+            originalKey = Key.LeftShift,
+            currentKey = Key.LeftShift,
+        });
+
+        bindings.Add(new BindingData
+        {
+            actionName = "Crouch",
+            originalKey = Key.C,
+            currentKey = Key.C,
+        });
+    }
+
+    // =========================================================
+    // RANDOMIZATION
+    // =========================================================
+
+    public void RandomizeBindings()
+    {
+        List<Key> availableKeys =
+            new List<Key>(allowedKeys);
+
+        // -----------------------------------------------------
+        // Shuffle all allowed keys (no locks; full randomization).
+        // -----------------------------------------------------
+
+        Shuffle(availableKeys);
+
+        int keyIndex = 0;
+
+        foreach (BindingData binding in bindings)
+        {
+            binding.currentKey = availableKeys[keyIndex];
+
+            keyIndex++;
+        }
+
+        ApplyAllBindings();
+
+#if UNITY_EDITOR
+        Debug.Log("[Binding] ===== RANDOMIZED =====");
+#endif
+
+        PrintBindings();
+    }
+
+    private void Shuffle(List<Key> list)
+    {
+        for (int i = list.Count - 1; i > 0; i--)
+        {
+            int randomIndex =
+                UnityEngine.Random.Range(0, i + 1);
+
+            Key temp = list[i];
+
+            list[i] = list[randomIndex];
+            list[randomIndex] = temp;
+        }
+    }
+
+    // =========================================================
+    // APPLY BINDINGS TO INPUT SYSTEM
+    // =========================================================
+
+    private void ApplyAllBindings()
+    {
+        ApplyMovementBindings();
+
+        ApplyButtonBinding(
+            "Jump",
+            GetBinding("Jump").currentKey
+        );
+
+        ApplyButtonBinding(
+            "Sprint",
+            GetBinding("Sprint").currentKey
+        );
+
+        ApplyButtonBinding(
+            "Crouch",
+            GetBinding("Crouch").currentKey
+        );
+    }
+
+    private void ApplyMovementBindings()
+    {
+        InputAction moveAction =
+            inputManager.Player.Move;
+
+        for (int i = 0;
+             i < moveAction.bindings.Count;
+             i++)
+        {
+            InputBinding binding =
+                moveAction.bindings[i];
+
+            if (!binding.isPartOfComposite)
+                continue;
+
+            switch (binding.name)
+            {
+                case "up":
+
+                    SetBindingPath(
+                        moveAction,
+                        i,
+                        GetBinding("Move Forward").currentKey
+                    );
+
+                    break;
+
+                case "down":
+
+                    SetBindingPath(
+                        moveAction,
+                        i,
+                        GetBinding("Move Backward").currentKey
+                    );
+
+                    break;
+
+                case "left":
+
+                    SetBindingPath(
+                        moveAction,
+                        i,
+                        GetBinding("Move Left").currentKey
+                    );
+
+                    break;
+
+                case "right":
+
+                    SetBindingPath(
+                        moveAction,
+                        i,
+                        GetBinding("Move Right").currentKey
+                    );
+
+                    break;
+            }
+        }
+    }
+
+    private void ApplyButtonBinding(
+        string actionName,
+        Key key)
+    {
+        InputAction action =
+            GetAction(actionName);
+
+        if (action == null)
+            return;
+
+        if (action.bindings.Count == 0)
+            return;
+
+        action.ApplyBindingOverride(
+            0,
+            $"<Keyboard>/{GetKeyName(key)}"
+        );
+    }
+
+    private void SetBindingPath(
+        InputAction action,
+        int bindingIndex,
+        Key key)
+    {
+        action.ApplyBindingOverride(
+            bindingIndex,
+            $"<Keyboard>/{GetKeyName(key)}"
+        );
+    }
+
+    // =========================================================
+    // ACTION LOOKUP
+    // =========================================================
+
+    private InputAction GetAction(
+        string actionName)
+    {
+        switch (actionName)
+        {
+            case "Jump":
+                return inputManager.Player.Jump;
+
+            case "Sprint":
+                return inputManager.Player.Sprint;
+
+            case "Crouch":
+                return inputManager.Player.Crouch;
+
+            default:
+                return null;
+        }
+    }
+
+    // =========================================================
+    // GETTERS
+    // =========================================================
+
+    public IReadOnlyList<BindingData>
+        GetBindings()
+    {
+        return bindings;
+    }
+
+    public BindingData
+        GetBinding(string actionName)
+    {
+        return bindings.Find(
+            binding =>
+                binding.actionName == actionName
+        );
+    }
+
+    public Key
+        GetCurrentKey(string actionName)
+    {
+        BindingData binding =
+            GetBinding(actionName);
+
+        if (binding == null)
+            return Key.None;
+
+        return binding.currentKey;
+    }
+
+    public Key
+        GetOriginalKey(string actionName)
+    {
+        BindingData binding =
+            GetBinding(actionName);
+
+        if (binding == null)
+            return Key.None;
+
+        return binding.originalKey;
+    }
+
+    // =========================================================
+    // DEBUG
+    // =========================================================
+
+    private void PrintBindings()
+    {
+        foreach (BindingData binding in bindings)
+        {
+            string lockText =
+                false
+                    ? " [LOCKED]"
+                    : "";
+
+            #if UNITY_EDITOR
+            Debug.Log($"{binding.actionName} â†’ {binding.currentKey}" + lockText);
+            #endif
+        }
+    }
+
+    private BindingData GetBindingUsingKey(Key key)
+    {
+        return bindings.Find(
+            binding => binding.currentKey == key
+        );
+    }
+
+
+
+    // =========================================================
+    // TIMED RANDOMIZATION (Blue Mail)
+    // =========================================================
+        public void StartRandomTimer()
+    {
+        StopRandomTimer();
+        timerCoroutine = TimerLoop(shuffleInterval);
+        StartCoroutine(timerCoroutine);
+    }
+
+    public void StopRandomTimer()
+    {
+        if (timerCoroutine != null)
+        {
+            StopCoroutine(timerCoroutine);
+            timerCoroutine = null;
+        }
+    }
+
+        private System.Collections.IEnumerator TimerLoop(float interval)
+    {
+        while (true)
+        {
+            RandomizeBindings(); // shuffle immediately on pickup
+            yield return new WaitForSeconds(interval);
+        }
+    }
+
+    // =========================================================
+    // RESET (for Blue Mail delivery / end of day)
+    // =========================================================
+        public void ResetToDefaults()
+    {
+        StopRandomTimer();
+        foreach (BindingData binding in bindings)
+        {
+            binding.currentKey = binding.originalKey;
+        }
+        ApplyAllBindings();
+#if UNITY_EDITOR
+        Debug.Log("[Binding] ===== RESET TO DEFAULTS =====");
+#endif
+        PrintBindings();
+    }
+
+    // =========================================================
+    // KEY  INPUT SYSTEM PATH
+    // =========================================================
+
+    private string GetKeyName(Key key)
+    {
+        switch (key)
+        {
+            case Key.W:
+                return "w";
+
+            case Key.A:
+                return "a";
+
+            case Key.S:
+                return "s";
+
+            case Key.D:
+                return "d";
+
+            case Key.Space:
+                return "space";
+
+            case Key.LeftShift:
+                return "leftShift";
+
+            case Key.C:
+                return "c";
+
+            default:
+                return "";
+        }
+    }
+}
